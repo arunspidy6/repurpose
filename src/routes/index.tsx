@@ -6,6 +6,7 @@ import { getUsage, createPortalSession } from "@/lib/payments.functions";
 import {
   generateRepurpose,
   regenerateOutput,
+  saveOutputs,
   listRepurposes,
   saveBrandVoice,
   getBrandVoice,
@@ -318,6 +319,7 @@ function RepurposePrototype() {
   const fetchUsage = useServerFn(getUsage);
   const generateFn = useServerFn(generateRepurpose);
   const regenerateFn = useServerFn(regenerateOutput);
+  const saveOutputsFn = useServerFn(saveOutputs);
   const listFn = useServerFn(listRepurposes);
   const loadBrandVoice = useServerFn(getBrandVoice);
   const saveBrandVoiceFn = useServerFn(saveBrandVoice);
@@ -354,6 +356,8 @@ function RepurposePrototype() {
   const [outputs, setOutputs] = useState<Record<string, string>>({});
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false); // unsaved edits/regenerations in Results
+  const [savingOutputs, setSavingOutputs] = useState(false);
   const [srcTitle, setSrcTitle] = useState("");
   const [srcMeta, setSrcMeta] = useState("");
   const [toast, setToast] = useState("");
@@ -497,6 +501,7 @@ function RepurposePrototype() {
       }
       setOutputs(result.outputs);
       setCurrentId(result.id);
+      setDirty(false); // freshly generated == already persisted by the server
       await Promise.all([refreshUsage(), refreshHistory()]);
       setScreen("results");
     } catch (e) {
@@ -512,6 +517,7 @@ function RepurposePrototype() {
     setSrcMeta(r.source_type ?? "");
     setOutputs(r.outputs ?? {});
     setCurrentId(r.id);
+    setDirty(false);
     setScreen("results");
   };
   const openProject = (p: Project) => {
@@ -520,6 +526,7 @@ function RepurposePrototype() {
     setSrcMeta(p.src);
     setOutputs(OUTPUTS_INIT);
     setCurrentId(null); // demo project — no real row to regenerate against
+    setDirty(false);
     setScreen("results");
   };
 
@@ -549,12 +556,33 @@ function RepurposePrototype() {
         return;
       }
       setOutputs((o) => ({ ...o, [platform]: res.output }));
+      setDirty(true); // user-controlled: persists only on Save
       haptic();
-      showToast("New variation ready");
+      showToast("New variation ready · Save to keep it");
     } catch (e) {
       showToast((e as Error).message || "Couldn't regenerate");
     } finally {
       setRegeneratingId(null);
+    }
+  };
+
+  // Persist current outputs to the row — the explicit Save action.
+  const saveCurrentOutputs = async () => {
+    if (!user) { navigate({ to: "/auth" }); return; }
+    if (!currentId) { showToast("Generate this first to save it"); return; }
+    if (!dirty || savingOutputs) return;
+    setSavingOutputs(true);
+    try {
+      const res = await saveOutputsFn({ data: { id: currentId, outputs } });
+      if (!res.ok) { showToast(res.message || "Couldn't save"); return; }
+      setDirty(false);
+      haptic();
+      showToast("Saved to library");
+      refreshHistory();
+    } catch (e) {
+      showToast((e as Error).message || "Couldn't save");
+    } finally {
+      setSavingOutputs(false);
     }
   };
 
@@ -811,7 +839,9 @@ function RepurposePrototype() {
                 onExit={() => setScreen("home")}
                 onOpenOutput={(id) => setEditId(id)}
                 onCopy={(id) => copyText(outputs[id])}
-                onSave={() => showToast("Saved to library")}
+                onSave={saveCurrentOutputs}
+                dirty={dirty}
+                saving={savingOutputs}
                 onSendScheduler={() => showToast("Sent to your scheduler")}
                 onExportAll={exportAll}
                 onRegenerate={regenerateOne}
@@ -823,7 +853,7 @@ function RepurposePrototype() {
               <EditorSheet
                 platform={editP}
                 text={outputs[editId]}
-                onChange={(t) => setOutputs({ ...outputs, [editId]: t })}
+                onChange={(t) => { setOutputs({ ...outputs, [editId]: t }); setDirty(true); }}
                 onClose={() => setEditId(null)}
                 onCopy={() => copyText(outputs[editId])}
                 onShare={() => showToast("Opening share sheet…")}
@@ -2137,6 +2167,8 @@ function Results({
   onOpenOutput,
   onCopy,
   onSave,
+  dirty,
+  saving,
   onSendScheduler,
   onExportAll,
   onRegenerate,
@@ -2150,6 +2182,8 @@ function Results({
   onOpenOutput: (id: string) => void;
   onCopy: (id: string) => void;
   onSave: () => void;
+  dirty: boolean;
+  saving: boolean;
   onSendScheduler: () => void;
   onExportAll: () => void;
   onRegenerate: (id: string) => void;
@@ -2202,18 +2236,22 @@ function Results({
           </span>
         </div>
         <div
-          onClick={onSave}
+          onClick={() => { if (dirty && !saving) onSave(); }}
           style={{
             height: 36,
             padding: "0 15px",
             borderRadius: 11,
-            background: "rgba(47,227,155,0.12)",
+            background: dirty ? "rgba(47,227,155,0.12)" : "rgba(255,255,255,0.05)",
             display: "flex",
             alignItems: "center",
-            cursor: "pointer",
+            gap: 7,
+            cursor: dirty && !saving ? "pointer" : "default",
           }}
         >
-          <span style={{ fontSize: 14, fontWeight: 600, color: "#2fe39b" }}>Save</span>
+          {saving && <Spinner />}
+          <span style={{ fontSize: 14, fontWeight: 600, color: dirty ? "#2fe39b" : "rgba(244,244,246,0.4)" }}>
+            {saving ? "Saving…" : dirty ? "Save" : "Saved"}
+          </span>
         </div>
       </div>
 

@@ -254,7 +254,7 @@ export const regenerateOutput = createServerFn({ method: "POST" })
     const [rowRes, profileRes] = await Promise.all([
       supabase
         .from("repurposes")
-        .select("source_type, source_text, title, outputs")
+        .select("source_type, source_text, title")
         .eq("id", data.id)
         .maybeSingle(),
       supabase.from("profiles").select("brand_voice").eq("id", userId).maybeSingle(),
@@ -322,14 +322,27 @@ Return only the generated text. No JSON, no commentary, no labels around it.`;
     const output = (json.choices?.[0]?.message?.content ?? "").trim();
     if (!output) return { ok: false, reason: "generation_failed", message: "Model returned an empty output" };
 
-    // Merge into the existing outputs jsonb and persist.
-    const current = (row.outputs ?? {}) as Record<string, string>;
-    const nextOutputs = { ...current, [data.platform]: output };
+    // Do NOT persist here — the user stays in control. The new variation lives
+    // in client state until they explicitly hit Save (see saveOutputs).
+    return { ok: true, output };
+  });
+
+// Persist the current set of outputs for a repurpose — called when the user
+// explicitly hits Save, so edits and regenerated variations only stick when
+// they choose. RLS guarantees the row belongs to the caller.
+export const saveOutputs = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: { id: string; outputs: Record<string, string> }) => {
+    if (!data.id) throw new Error("Missing repurpose id");
+    if (!data.outputs || typeof data.outputs !== "object") throw new Error("Missing outputs");
+    return data;
+  })
+  .handler(async ({ data, context }): Promise<{ ok: true } | { ok: false; message: string }> => {
+    const { supabase } = context;
     const { error } = await supabase
       .from("repurposes")
-      .update({ outputs: nextOutputs })
+      .update({ outputs: data.outputs })
       .eq("id", data.id);
-    if (error) return { ok: false, reason: "generation_failed", message: error.message };
-
-    return { ok: true, output };
+    if (error) return { ok: false, message: error.message };
+    return { ok: true };
   });
