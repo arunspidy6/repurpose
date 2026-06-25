@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, SafeAreaView, TouchableOpacity, Text } from 'react-native';
-import { OnboardingScreen } from '@/screens/OnboardingScreen';
-import { HomeScreen } from '@/screens/HomeScreen';
-import { LibraryScreen } from '@/screens/LibraryScreen';
-import { SettingsScreen } from '@/screens/SettingsScreen';
-import { NewRepurposeScreen } from '@/screens/NewRepurposeScreen';
-import { ResultsScreen } from '@/screens/ResultsScreen';
-import { colors } from '@/data/constants';
+import { OnboardingScreen } from './src/screens/OnboardingScreen';
+import { HomeScreen } from './src/screens/HomeScreen';
+import { LibraryScreen } from './src/screens/LibraryScreen';
+import { SettingsScreen } from './src/screens/SettingsScreen';
+import { NewRepurposeScreen } from './src/screens/NewRepurposeScreen';
+import { ResultsScreen } from './src/screens/ResultsScreen';
+import { colors } from './src/data/constants';
 
 type Screen = 'onboarding' | 'home' | 'library' | 'settings' | 'new' | 'results';
 type TabId = 'home' | 'library' | 'settings';

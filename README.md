@@ -1,56 +1,133 @@
-# Welcome to your Expo app 👋
+# Repurpose — Content Variation Engine
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A React Native mobile app (iOS & Android) built with Expo that turns any video, clip, caption, or idea into platform-native content.
 
-## Get started
+## Features
 
-1. Install dependencies
+- **Onboarding Flow**: Brand voice setup from sample posts
+- **Content Repurposing**: Convert long-form content into 12+ social media formats
+- **Multi-Platform Support**: YouTube, TikTok, Instagram, LinkedIn, Twitter/X, and more
+- **Smart Editing**: In-app editor with regeneration and variation features
+- **Project Library**: Organize and search all repurposed content
+- **Brand Voices**: Support for multiple writing styles and tones
+- **Export Options**: Share directly or use scheduler integration
 
-   ```bash
-   npm install
-   ```
+## Supported Formats
 
-2. Start the app
+- Hook variations
+- Shorts/Reels scripts
+- Captions & variants
+- LinkedIn posts
+- Twitter/X threads
+- Carousel posts
+- Newsletter intros
+- YouTube titles & thumbnails
+- A/B test versions
+- Trend remixes
 
-   ```bash
-   npx expo start
-   ```
+## Tech Stack
 
-In the output, you'll find options to open the app in a
+- **React Native** with Expo
+- **TypeScript** for type safety
+- **React Navigation** for tab-based navigation
+- **Native styling** with StyleSheet (no external UI library)
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Project Structure
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+src/
+├── app/
+│   └── index.tsx           # Main app entry point
+├── screens/
+│   ├── OnboardingScreen.tsx
+│   ├── HomeScreen.tsx
+│   ├── LibraryScreen.tsx
+│   ├── SettingsScreen.tsx
+│   ├── NewRepurposeScreen.tsx
+│   └── ResultsScreen.tsx
+├── components/
+│   ├── Button.tsx
+│   ├── Card.tsx
+│   └── MonoChip.tsx
+└── data/
+    └── constants.ts        # Colors, platforms, sample data
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Getting Started
 
-### Other setup steps
+### Prerequisites
+- Node.js 18+
+- Expo CLI: `npm install -g expo-cli`
+- iOS: Xcode (Mac only)
+- Android: Android Studio & JDK 17+
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+### Installation
 
-## Learn more
+```bash
+cd repurpose-app
+npm install
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+### Running on iOS
+```bash
+npx expo run:ios
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Or with Xcode simulator:
+```bash
+npx expo start
+# Press 'i' in terminal
+```
 
-## Join the community
+### Running on Android
+```bash
+npx expo run:android
+```
 
-Join our community of developers creating universal apps.
+Or with Android emulator:
+```bash
+npx expo start
+# Press 'a' in terminal
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+### Web (Development)
+```bash
+npx expo start --web
+# Press 'w' in terminal
+```
+
+## Build for Distribution
+
+### iOS
+```bash
+npx eas build --platform ios
+```
+
+### Android
+```bash
+npx eas build --platform android
+```
+
+## Design System
+
+**Colors** (Dark theme):
+- Background: `#0a0a0b`
+- Cards: `#141416`
+- Accent (Green): `#2fe39b`
+- Text: `#f4f4f6`
+- Muted Text: `rgba(244,244,246,0.55)`
+
+**Components**:
+- Buttons (primary, secondary, ghost)
+- Cards (rounded, bordered)
+- MonoChip badges
+- Tab navigation with icons
+
+## Future Enhancements
+
+- AI-powered content generation (OpenAI integration)
+- Direct platform publishing (Instagram, TikTok APIs)
+- Analytics dashboard
+- Collaboration features
+- Advanced scheduling
+- Content templates library
