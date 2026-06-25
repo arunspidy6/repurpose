@@ -21,6 +21,7 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [confirmSent, setConfirmSent] = useState<string | null>(null); // email we asked them to confirm
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -34,12 +35,19 @@ function AuthPage() {
     setBusy(true);
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: { emailRedirectTo: window.location.origin },
         });
         if (error) throw error;
+        // When email confirmation is enabled, signUp returns no session — the
+        // user must confirm via email first. Don't bounce them into the
+        // auth-gated /plans route; show a "check your inbox" state instead.
+        if (!data.session) {
+          setConfirmSent(email);
+          return;
+        }
         router.invalidate();
         navigate({ to: "/plans" });
       } else {
@@ -70,7 +78,7 @@ function AuthPage() {
     navigate({ to: "/" });
   };
 
-  return (
+  const shell = (children: React.ReactNode) => (
     <div style={{
       minHeight: "100vh",
       background: "#050506",
@@ -89,6 +97,47 @@ function AuthPage() {
         borderRadius: 24,
         padding: 28,
       }}>
+        {children}
+      </div>
+    </div>
+  );
+
+  if (confirmSent) {
+    return shell(
+      <>
+        <div style={{
+          width: 44, height: 44, borderRadius: 12, background: "rgba(47,227,155,0.12)",
+          display: "grid", placeItems: "center", marginBottom: 18,
+        }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <path d="M4 7l8 5 8-5" stroke="#2fe39b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <rect x="3.5" y="5.5" width="17" height="13" rx="2.5" stroke="#2fe39b" strokeWidth="2" />
+          </svg>
+        </div>
+        <h1 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 6px" }}>Confirm your email</h1>
+        <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 14, lineHeight: 1.5, margin: "0 0 22px" }}>
+          We sent a confirmation link to <strong style={{ color: "#f4f4f6" }}>{confirmSent}</strong>.
+          Open it to activate your account, then sign in.
+        </p>
+        <button
+          onClick={() => { setConfirmSent(null); setMode("signin"); setPassword(""); }}
+          style={{
+            width: "100%", padding: "13px 14px", borderRadius: 12,
+            background: "#2fe39b", color: "#062018", fontWeight: 700, fontSize: 14,
+            border: "none", cursor: "pointer",
+          }}
+        >
+          Back to sign in
+        </button>
+        <p style={{ textAlign: "center", marginTop: 16, fontSize: 12.5, color: "rgba(255,255,255,0.45)" }}>
+          Didn't get it? Check spam, or wait a minute and try signing in.
+        </p>
+      </>,
+    );
+  }
+
+  return shell(
+    <>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
           <div style={{
             width: 32, height: 32, borderRadius: 8, background: "#2fe39b",
@@ -161,8 +210,7 @@ function AuthPage() {
             {mode === "signin" ? "Create an account" : "Sign in"}
           </button>
         </div>
-      </div>
-    </div>
+    </>,
   );
 }
 
