@@ -1,0 +1,1 @@
+ALTER TABLE public.repurposes ADD COLUMN IF NOT EXISTS outputs jsonb NOT NULL DEFAULT '{}'::jsonb; ALTER TABLE public.repurposes ADD COLUMN IF NOT EXISTS source_text text;
