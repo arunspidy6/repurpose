@@ -10,6 +10,12 @@ import {
   getBrandVoice,
   type RepurposeRow,
 } from "@/lib/repurpose.functions";
+import {
+  getProfile,
+  saveProfile,
+  DEFAULT_PREFERENCES,
+  type Preferences,
+} from "@/lib/profile.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { Paywall, ManageBillingButton } from "@/components/Paywall";
 import { PaymentTestModeBanner } from "@/components/PaymentTestModeBanner";
@@ -313,6 +319,8 @@ function RepurposePrototype() {
   const listFn = useServerFn(listRepurposes);
   const loadBrandVoice = useServerFn(getBrandVoice);
   const saveBrandVoiceFn = useServerFn(saveBrandVoice);
+  const loadProfile = useServerFn(getProfile);
+  const saveProfileFn = useServerFn(saveProfile);
   const [usage, setUsage] = useState<{ used: number; limit: number; isPro: boolean } | null>(null);
   const [paywallOpen, setPaywallOpen] = useState(false);
   const openPortal = useServerFn(createPortalSession);
@@ -347,7 +355,17 @@ function RepurposePrototype() {
   const [toast, setToast] = useState("");
   const [history, setHistory] = useState<RepurposeRow[]>([]);
   const [brandVoice, setBrandVoice] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [prefs, setPrefs] = useState<Preferences>(DEFAULT_PREFERENCES);
   void srcMeta;
+
+  // Fire a short haptic tap when the user has haptics enabled (web vibrate API).
+  const haptic = () => {
+    if (!prefs.haptics) return;
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate(10);
+    }
+  };
 
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = (msg: string) => {
@@ -378,6 +396,12 @@ function RepurposePrototype() {
     refreshHistory();
     if (user) {
       loadBrandVoice().then((r) => setBrandVoice(r.brandVoice)).catch(() => {});
+      loadProfile()
+        .then((p) => {
+          setDisplayName(p.displayName);
+          setPrefs(p.preferences);
+        })
+        .catch(() => {});
     }
   /* eslint-disable-next-line */ }, [user?.id]);
 
@@ -406,12 +430,17 @@ function RepurposePrototype() {
   // simulated progress while AI runs (purely visual; real result drives transition)
   useEffect(() => {
     if (screen !== "new" || newStep !== 2) return;
+    // Respect the reduce-motion preference: skip the stepped animation.
+    if (prefs.reduceMotion) {
+      setGenIdx(Math.max(selected.length - 1, 0));
+      return;
+    }
     setGenIdx(0);
     const iv = setInterval(() => {
       setGenIdx((n) => Math.min(n + 1, Math.max(selected.length - 1, 0)));
     }, 700);
     return () => clearInterval(iv);
-  }, [screen, newStep, selected.length]);
+  }, [screen, newStep, selected.length, prefs.reduceMotion]);
 
   const togglePlatform = (id: string) =>
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -492,6 +521,50 @@ function RepurposePrototype() {
       navigator.clipboard?.writeText(t);
     } catch {}
     showToast("Copied to clipboard");
+  };
+
+  // Export every generated output, honoring the user's Default export preference.
+  const exportAll = async () => {
+    const ids = selected.filter((id) => outputs[id]);
+    if (!ids.length) { showToast("Nothing to export yet"); return; }
+    const label = (id: string) => PLATFORMS.find((p) => p.id === id)?.name ?? id;
+    const combined = ids.map((id) => `## ${label(id)}\n\n${outputs[id]}`).join("\n\n———\n\n");
+
+    if (prefs.defaultExport === "copy") {
+      try { await navigator.clipboard?.writeText(combined); } catch { /* clipboard unavailable */ }
+      showToast(`Copied ${ids.length} outputs`);
+      return;
+    }
+
+    if (prefs.defaultExport === "download") {
+      try {
+        const blob = new Blob([combined], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${(srcTitle || "repurpose").replace(/[^\w-]+/g, "-").slice(0, 40)}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        showToast(`Downloaded ${ids.length} outputs`);
+      } catch {
+        showToast("Download failed");
+      }
+      return;
+    }
+
+    // share (default)
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: srcTitle || "Repurpose", text: combined });
+        return;
+      } catch {
+        // user cancelled or share unsupported — fall through to clipboard
+      }
+    }
+    try { await navigator.clipboard?.writeText(combined); } catch { /* clipboard unavailable */ }
+    showToast("Copied (sharing unavailable)");
   };
 
   const editP = editId ? findP(editId) : null;
@@ -628,7 +701,44 @@ function RepurposePrototype() {
                   setBrandVoice(v);
                   try {
                     await saveBrandVoiceFn({ data: { brandVoice: v } });
+                    haptic();
                     showToast("Brand voice saved");
+                  } catch (e) { showToast((e as Error).message); }
+                }}
+                userEmail={user?.email ?? ""}
+                isPro={!!usage?.isPro}
+                displayName={displayName}
+                onSaveDisplayName={async (name) => {
+                  const prev = displayName;
+                  setDisplayName(name);
+                  try {
+                    const saved = await saveProfileFn({ data: { displayName: name } });
+                    setDisplayName(saved.displayName);
+                    haptic();
+                    showToast("Profile saved");
+                  } catch (e) {
+                    setDisplayName(prev);
+                    showToast((e as Error).message);
+                  }
+                }}
+                prefs={prefs}
+                onUpdatePref={async (patch) => {
+                  const prev = prefs;
+                  const next = { ...prefs, ...patch };
+                  setPrefs(next); // optimistic
+                  haptic();
+                  try {
+                    const saved = await saveProfileFn({ data: { preferences: patch } });
+                    setPrefs(saved.preferences);
+                  } catch (e) {
+                    setPrefs(prev);
+                    showToast((e as Error).message);
+                  }
+                }}
+                onSignOut={async () => {
+                  try {
+                    await signOut();
+                    setScreen("onboarding");
                   } catch (e) { showToast((e as Error).message); }
                 }}
                 showToast={showToast}
@@ -668,7 +778,7 @@ function RepurposePrototype() {
                 onCopy={(id) => copyText(outputs[id])}
                 onSave={() => showToast("Saved to library")}
                 onSendScheduler={() => showToast("Sent to your scheduler")}
-                onExportAll={() => showToast(`Exported ${selected.length} outputs`)}
+                onExportAll={exportAll}
               />
             )}
 
@@ -961,6 +1071,13 @@ function MainTabs({
   voice,
   brandVoice,
   onSaveBrandVoice,
+  userEmail,
+  isPro,
+  displayName,
+  onSaveDisplayName,
+  prefs,
+  onUpdatePref,
+  onSignOut,
   showToast,
 }: {
   screen: Screen;
@@ -974,6 +1091,13 @@ function MainTabs({
   voice: string;
   brandVoice: string;
   onSaveBrandVoice: (v: string) => void;
+  userEmail: string;
+  isPro: boolean;
+  displayName: string;
+  onSaveDisplayName: (name: string) => void;
+  prefs: Preferences;
+  onUpdatePref: (patch: Partial<Preferences>) => void;
+  onSignOut: () => void;
   showToast: (m: string) => void;
 }) {
   const TABS: { id: Screen; label: string }[] = [
@@ -1009,6 +1133,13 @@ function MainTabs({
             showToast={showToast}
             brandVoice={brandVoice}
             onSaveBrandVoice={onSaveBrandVoice}
+            userEmail={userEmail}
+            isPro={isPro}
+            displayName={displayName}
+            onSaveDisplayName={onSaveDisplayName}
+            prefs={prefs}
+            onUpdatePref={onUpdatePref}
+            onSignOut={onSignOut}
           />
         )}
       </div>
@@ -1315,18 +1446,95 @@ function LibraryView({
 
 function SettingsView({
   voice, showToast, brandVoice, onSaveBrandVoice,
+  userEmail, isPro, displayName, onSaveDisplayName,
+  prefs, onUpdatePref, onSignOut,
 }: {
   voice: string;
   showToast: (m: string) => void;
   brandVoice: string;
   onSaveBrandVoice: (v: string) => void;
+  userEmail: string;
+  isPro: boolean;
+  displayName: string;
+  onSaveDisplayName: (name: string) => void;
+  prefs: Preferences;
+  onUpdatePref: (patch: Partial<Preferences>) => void;
+  onSignOut: () => void;
 }) {
   const [local, setLocal] = useState(brandVoice);
   useEffect(() => { setLocal(brandVoice); }, [brandVoice]);
   const dirty = local !== brandVoice;
+
+  const [nameLocal, setNameLocal] = useState(displayName);
+  useEffect(() => { setNameLocal(displayName); }, [displayName]);
+  const nameDirty = nameLocal.trim() !== displayName.trim();
+
+  const EXPORT_LABELS: Record<Preferences["defaultExport"], string> = {
+    share: "Share sheet",
+    copy: "Copy to clipboard",
+    download: "Download .txt",
+  };
+  const cycleExport = () => {
+    const order: Preferences["defaultExport"][] = ["share", "copy", "download"];
+    const next = order[(order.indexOf(prefs.defaultExport) + 1) % order.length];
+    onUpdatePref({ defaultExport: next });
+  };
+
   return (
     <div style={{ padding: "60px 20px 8px", display: "flex", flexDirection: "column", gap: 22 }}>
       <h1 style={{ fontFamily: "'Inter Tight'", fontWeight: 800, fontSize: 30, letterSpacing: "-1.1px", margin: 0 }}>Settings</h1>
+
+      <Group label="Account">
+        <div style={{ padding: 16, display: "flex", alignItems: "center", gap: 13, borderBottom: "0.5px solid rgba(255,255,255,0.07)" }}>
+          <Avatar size={46} fontSize={18} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {displayName.trim() || "Your account"}
+            </div>
+            <div style={{ fontSize: 12.5, color: "rgba(244,244,246,0.42)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {userEmail || "Signed in"}
+            </div>
+          </div>
+          <span
+            style={{
+              fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 8, flexShrink: 0,
+              ...(isPro
+                ? { background: "#2fe39b", color: "#04140d" }
+                : { background: "rgba(255,255,255,0.08)", color: "rgba(244,244,246,0.6)" }),
+            }}
+          >
+            {isPro ? "PRO" : "FREE"}
+          </span>
+        </div>
+        <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+          <span style={{ fontSize: 13, color: "rgba(244,244,246,0.5)" }}>Display name</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              value={nameLocal}
+              onChange={(e) => setNameLocal(e.target.value)}
+              maxLength={80}
+              placeholder="What should we call you?"
+              style={{
+                flex: 1, height: 42, background: "#0e0e10", color: "#f4f4f6",
+                border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12,
+                padding: "0 12px", fontSize: 14.5, fontFamily: "'Inter', system-ui", outline: "none",
+              }}
+            />
+            <button
+              disabled={!nameDirty}
+              onClick={() => onSaveDisplayName(nameLocal.trim())}
+              style={{
+                height: 42, padding: "0 16px", borderRadius: 10, border: "none",
+                background: nameDirty ? "#2fe39b" : "rgba(255,255,255,0.08)",
+                color: nameDirty ? "#04140d" : "rgba(255,255,255,0.4)",
+                fontWeight: 700, fontSize: 14, cursor: nameDirty ? "pointer" : "default", flexShrink: 0,
+              }}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </Group>
 
       <Group label="Brand voice">
         <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1363,11 +1571,22 @@ function SettingsView({
       </Group>
 
       <Group label="Preferences">
-        <PrefRow label="Dark appearance" />
-        <PrefRow label="Haptic feedback" />
-        <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <PrefRow
+          label="Haptic feedback"
+          value={prefs.haptics}
+          onChange={(v) => onUpdatePref({ haptics: v })}
+        />
+        <PrefRow
+          label="Reduce motion"
+          value={prefs.reduceMotion}
+          onChange={(v) => onUpdatePref({ reduceMotion: v })}
+        />
+        <div
+          onClick={cycleExport}
+          style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
+        >
           <span style={{ fontSize: 15.5 }}>Default export</span>
-          <span style={{ fontSize: 14.5, color: "rgba(244,244,246,0.45)" }}>Share sheet ›</span>
+          <span style={{ fontSize: 14.5, color: "rgba(244,244,246,0.45)" }}>{EXPORT_LABELS[prefs.defaultExport]} ›</span>
         </div>
       </Group>
 
@@ -1379,6 +1598,15 @@ function SettingsView({
         style={{ ...ghostBtn, alignSelf: "center" }}
       >
         Manage voice presets
+      </button>
+      <button
+        onClick={onSignOut}
+        style={{
+          ...ghostBtn, alignSelf: "center", color: "#ff6b6b",
+          borderColor: "rgba(255,107,107,0.3)",
+        }}
+      >
+        Sign out
       </button>
     </div>
   );
@@ -1415,27 +1643,40 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function PrefRow({ label }: { label: string }) {
+function PrefRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
   return (
     <div
+      onClick={() => onChange(!value)}
       style={{
         padding: "14px 16px",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
         borderBottom: "0.5px solid rgba(255,255,255,0.07)",
+        cursor: "pointer",
       }}
     >
       <span style={{ fontSize: 15.5 }}>{label}</span>
       <div
+        role="switch"
+        aria-checked={value}
         style={{
           width: 46,
           height: 28,
           borderRadius: 99,
-          background: "#2fe39b",
+          background: value ? "#2fe39b" : "rgba(255,255,255,0.14)",
           padding: 3,
           display: "flex",
-          justifyContent: "flex-end",
+          justifyContent: value ? "flex-end" : "flex-start",
+          transition: "background 0.18s ease",
         }}
       >
         <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#fff" }} />
