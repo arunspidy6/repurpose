@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { getUsage, createPortalSession } from "@/lib/payments.functions";
 import {
   generateRepurpose,
+  regenerateOutput,
   listRepurposes,
   saveBrandVoice,
   getBrandVoice,
@@ -316,6 +317,7 @@ function RepurposePrototype() {
   const { user, loading: authLoading, signOut } = useAuth();
   const fetchUsage = useServerFn(getUsage);
   const generateFn = useServerFn(generateRepurpose);
+  const regenerateFn = useServerFn(regenerateOutput);
   const listFn = useServerFn(listRepurposes);
   const loadBrandVoice = useServerFn(getBrandVoice);
   const saveBrandVoiceFn = useServerFn(saveBrandVoice);
@@ -350,6 +352,8 @@ function RepurposePrototype() {
   const [genIdx, setGenIdx] = useState(0);
   const [editId, setEditId] = useState<string | null>(null);
   const [outputs, setOutputs] = useState<Record<string, string>>({});
+  const [currentId, setCurrentId] = useState<string | null>(null);
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [srcTitle, setSrcTitle] = useState("");
   const [srcMeta, setSrcMeta] = useState("");
   const [toast, setToast] = useState("");
@@ -492,6 +496,7 @@ function RepurposePrototype() {
         return;
       }
       setOutputs(result.outputs);
+      setCurrentId(result.id);
       await Promise.all([refreshUsage(), refreshHistory()]);
       setScreen("results");
     } catch (e) {
@@ -506,6 +511,7 @@ function RepurposePrototype() {
     setSrcTitle(r.title ?? "Untitled");
     setSrcMeta(r.source_type ?? "");
     setOutputs(r.outputs ?? {});
+    setCurrentId(r.id);
     setScreen("results");
   };
   const openProject = (p: Project) => {
@@ -513,6 +519,7 @@ function RepurposePrototype() {
     setSrcTitle(p.title);
     setSrcMeta(p.src);
     setOutputs(OUTPUTS_INIT);
+    setCurrentId(null); // demo project — no real row to regenerate against
     setScreen("results");
   };
 
@@ -521,6 +528,34 @@ function RepurposePrototype() {
       navigator.clipboard?.writeText(t);
     } catch {}
     showToast("Copied to clipboard");
+  };
+
+  // Regenerate a single platform's output against the existing repurpose row.
+  const regenerateOne = async (platform: string) => {
+    if (regeneratingId) return; // one at a time
+    if (!user) { navigate({ to: "/auth" }); return; }
+    if (!currentId) {
+      showToast("Generate this first to create variations");
+      return;
+    }
+    setRegeneratingId(platform);
+    haptic();
+    try {
+      const res = await regenerateFn({ data: { id: currentId, platform, environment: getStripeEnvironment() } });
+      if (!res.ok) {
+        if (res.reason === "rate_limited") showToast("Rate limited. Try again in a moment.");
+        else if (res.reason === "credits_exhausted") showToast("AI credits exhausted. Contact support.");
+        else showToast(res.message || "Couldn't regenerate");
+        return;
+      }
+      setOutputs((o) => ({ ...o, [platform]: res.output }));
+      haptic();
+      showToast("New variation ready");
+    } catch (e) {
+      showToast((e as Error).message || "Couldn't regenerate");
+    } finally {
+      setRegeneratingId(null);
+    }
   };
 
   // Export every generated output, honoring the user's Default export preference.
@@ -779,6 +814,8 @@ function RepurposePrototype() {
                 onSave={() => showToast("Saved to library")}
                 onSendScheduler={() => showToast("Sent to your scheduler")}
                 onExportAll={exportAll}
+                onRegenerate={regenerateOne}
+                regeneratingId={regeneratingId}
               />
             )}
 
@@ -790,7 +827,8 @@ function RepurposePrototype() {
                 onClose={() => setEditId(null)}
                 onCopy={() => copyText(outputs[editId])}
                 onShare={() => showToast("Opening share sheet…")}
-                onRegenerate={() => showToast("Generating a new variation…")}
+                onRegenerate={() => regenerateOne(editId)}
+                regenerating={regeneratingId === editId}
               />
             )}
 
@@ -2101,6 +2139,8 @@ function Results({
   onSave,
   onSendScheduler,
   onExportAll,
+  onRegenerate,
+  regeneratingId,
 }: {
   selected: string[];
   srcTitle: string;
@@ -2112,6 +2152,8 @@ function Results({
   onSave: () => void;
   onSendScheduler: () => void;
   onExportAll: () => void;
+  onRegenerate: (id: string) => void;
+  regeneratingId: string | null;
 }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -2221,6 +2263,34 @@ function Results({
                 <div
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (regeneratingId !== id) onRegenerate(id);
+                  }}
+                  title="Regenerate variation"
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 10,
+                    background: "rgba(255,255,255,0.05)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    cursor: regeneratingId ? "default" : "pointer",
+                    opacity: regeneratingId && regeneratingId !== id ? 0.4 : 1,
+                  }}
+                >
+                  {regeneratingId === id ? (
+                    <Spinner />
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <path d="M20 11a8 8 0 10-.6 4" stroke="rgba(244,244,246,0.65)" strokeWidth="1.9" strokeLinecap="round" fill="none" />
+                      <path d="M20 4v5h-5" stroke="rgba(244,244,246,0.65)" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                    </svg>
+                  )}
+                </div>
+                <div
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onCopy(id);
                   }}
                   style={{
@@ -2232,6 +2302,7 @@ function Results({
                     alignItems: "center",
                     justifyContent: "center",
                     flexShrink: 0,
+                    cursor: "pointer",
                   }}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -2250,6 +2321,8 @@ function Results({
                   WebkitLineClamp: 4,
                   WebkitBoxOrient: "vertical",
                   overflow: "hidden",
+                  opacity: regeneratingId === id ? 0.4 : 1,
+                  transition: "opacity 0.2s ease",
                 }}
               >
                 {outputs[id]}
@@ -2323,6 +2396,7 @@ function EditorSheet({
   onCopy,
   onShare,
   onRegenerate,
+  regenerating,
 }: {
   platform: Platform;
   text: string;
@@ -2331,6 +2405,7 @@ function EditorSheet({
   onCopy: () => void;
   onShare: () => void;
   onRegenerate: () => void;
+  regenerating: boolean;
 }) {
   return (
     <>
@@ -2422,7 +2497,8 @@ function EditorSheet({
         </div>
         <div style={{ display: "flex", gap: 8, padding: "12px 16px 22px", borderTop: "0.5px solid rgba(255,255,255,0.07)" }}>
           <div
-            onClick={onRegenerate}
+            onClick={() => { if (!regenerating) onRegenerate(); }}
+            title="Regenerate variation"
             style={{
               width: 50,
               height: 50,
@@ -2431,19 +2507,23 @@ function EditorSheet({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              cursor: "pointer",
+              cursor: regenerating ? "default" : "pointer",
               flexShrink: 0,
             }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M20 12a8 8 0 10-2.3 5.6M20 12V7m0 5h-5"
-                stroke="rgba(244,244,246,0.7)"
-                strokeWidth="1.9"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            {regenerating ? (
+              <Spinner />
+            ) : (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M20 12a8 8 0 10-2.3 5.6M20 12V7m0 5h-5"
+                  stroke="rgba(244,244,246,0.7)"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
           </div>
           <button
             onClick={onShare}

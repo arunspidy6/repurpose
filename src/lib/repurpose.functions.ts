@@ -226,3 +226,110 @@ export const getBrandVoice = createServerFn({ method: "GET" })
       .maybeSingle();
     return { brandVoice: data?.brand_voice ?? "" };
   });
+
+type RegenerateInput = {
+  id: string;
+  platform: string;
+  environment: StripeEnv;
+};
+
+type RegenerateResult =
+  | { ok: true; output: string }
+  | { ok: false; reason: "rate_limited" | "credits_exhausted" | "generation_failed"; message?: string };
+
+// Regenerate a single platform's output for an existing repurpose, in place.
+// Does NOT create a new row and does NOT count against the monthly limit —
+// the repurpose already exists; this just swaps one variation.
+export const regenerateOutput = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: RegenerateInput) => {
+    if (!data.id) throw new Error("Missing repurpose id");
+    if (!PLATFORM_SPEC[data.platform]) throw new Error("Unknown platform");
+    return data;
+  })
+  .handler(async ({ data, context }): Promise<RegenerateResult> => {
+    const { supabase, userId } = context;
+
+    // Load the row (RLS guarantees ownership) + the user's brand voice.
+    const [rowRes, profileRes] = await Promise.all([
+      supabase
+        .from("repurposes")
+        .select("source_type, source_text, title, outputs")
+        .eq("id", data.id)
+        .maybeSingle(),
+      supabase.from("profiles").select("brand_voice").eq("id", userId).maybeSingle(),
+    ]);
+
+    const row = rowRes.data;
+    if (!row) return { ok: false, reason: "generation_failed", message: "Repurpose not found" };
+    if (!row.source_text?.trim()) {
+      return { ok: false, reason: "generation_failed", message: "No source text to regenerate from" };
+    }
+
+    const apiKey = process.env.LOVABLE_API_KEY;
+    if (!apiKey) return { ok: false, reason: "generation_failed", message: "AI not configured" };
+
+    const brandVoice = profileRes.data?.brand_voice?.trim() || "";
+    const spec = PLATFORM_SPEC[data.platform];
+
+    const system = `You are a senior content strategist who repurposes one source idea into platform-native variations for creators.
+
+Rules:
+- Match the platform's native voice and length conventions exactly.
+- Never invent facts not present in the source. If a metric or detail is missing, write around it.
+- Plain text only. No markdown headers, no asterisks for bold, no code fences.
+- Use line breaks for readability.
+- Produce a FRESH variation with a different angle or opening than a typical first draft.
+${brandVoice ? `\nBRAND VOICE (match this exactly):\n${brandVoice}` : ""}`;
+
+    const user = `SOURCE TYPE: ${row.source_type ?? "idea"}
+SOURCE TITLE: ${row.title || "(untitled)"}
+
+SOURCE CONTENT:
+"""
+${row.source_text.trim()}
+"""
+
+Write a single ${spec.name} output. ${spec.instruction}
+
+Return only the generated text. No JSON, no commentary, no labels around it.`;
+
+    let aiResp: Response;
+    try {
+      aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Lovable-API-Key": apiKey },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+        }),
+      });
+    } catch (e) {
+      return { ok: false, reason: "generation_failed", message: (e as Error).message };
+    }
+
+    if (aiResp.status === 429) return { ok: false, reason: "rate_limited" };
+    if (aiResp.status === 402) return { ok: false, reason: "credits_exhausted" };
+    if (!aiResp.ok) {
+      const text = await aiResp.text().catch(() => "");
+      return { ok: false, reason: "generation_failed", message: `AI ${aiResp.status}: ${text.slice(0, 300)}` };
+    }
+
+    const json = (await aiResp.json()) as { choices?: { message?: { content?: string } }[] };
+    const output = (json.choices?.[0]?.message?.content ?? "").trim();
+    if (!output) return { ok: false, reason: "generation_failed", message: "Model returned an empty output" };
+
+    // Merge into the existing outputs jsonb and persist.
+    const current = (row.outputs ?? {}) as Record<string, string>;
+    const nextOutputs = { ...current, [data.platform]: output };
+    const { error } = await supabase
+      .from("repurposes")
+      .update({ outputs: nextOutputs })
+      .eq("id", data.id);
+    if (error) return { ok: false, reason: "generation_failed", message: error.message };
+
+    return { ok: true, output };
+  });
