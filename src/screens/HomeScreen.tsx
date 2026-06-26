@@ -9,10 +9,11 @@ interface Props {
   onNewRepurpose: () => void;
   onViewLibrary: () => void;
   onSelectProject: (project: any) => void;
+  projects?: any[];
 }
 
-export function HomeScreen({ onNewRepurpose, onViewLibrary, onSelectProject }: Props) {
-  const recentProjects = PROJECTS.slice(0, 4);
+export function HomeScreen({ onNewRepurpose, onViewLibrary, onSelectProject, projects = PROJECTS }: Props) {
+  const recentProjects = projects.slice(0, 4);
   const getPlatform = (id: string) => PLATFORMS.find((p) => p.id === id);
 
   return (
@@ -68,7 +69,7 @@ export function HomeScreen({ onNewRepurpose, onViewLibrary, onSelectProject }: P
                 </View>
                 <View style={styles.projectFooter}>
                   <View style={styles.chips}>
-                    {project.formats.slice(0, 4).map((fmt, i) => (
+                    {project.formats.slice(0, 4).map((fmt: string, i: number) => (
                       <MonoChip key={fmt} mono={getPlatform(fmt)?.mono || ''} accent={i === 0} size={20} />
                     ))}
                   </View>

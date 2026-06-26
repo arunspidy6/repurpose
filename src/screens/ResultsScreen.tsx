@@ -8,10 +8,12 @@ interface Props {
   title: string;
   voice: string;
   selected: string[];
+  saved?: boolean;
+  onSave?: () => void;
   onExit: () => void;
 }
 
-export function ResultsScreen({ title, voice, selected, onExit }: Props) {
+export function ResultsScreen({ title, voice, selected, saved = false, onSave, onExit }: Props) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
@@ -50,8 +52,15 @@ export function ResultsScreen({ title, voice, selected, onExit }: Props) {
             {selected.length} outputs · {voice}
           </Text>
         </View>
-        <TouchableOpacity onPress={() => showToast('Saved to library')} style={styles.saveButton}>
-          <Text style={styles.saveButtonText}>Save</Text>
+        <TouchableOpacity
+          onPress={() => {
+            if (saved) { showToast('Already in your library'); return; }
+            onSave?.();
+            showToast('Saved to library');
+          }}
+          style={[styles.saveButton, saved && styles.saveButtonDone]}
+        >
+          <Text style={[styles.saveButtonText, saved && styles.saveButtonTextDone]}>{saved ? '✓ Saved' : 'Save'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -144,7 +153,9 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
   headerMeta: { fontSize: 12.5, color: colors.textDim, marginTop: 1 },
   saveButton: { height: 36, paddingHorizontal: 15, borderRadius: 11, backgroundColor: colors.accentSubtle, alignItems: 'center', justifyContent: 'center' },
+  saveButtonDone: { backgroundColor: 'rgba(255,255,255,0.06)' },
   saveButtonText: { fontSize: 14, fontWeight: '600', color: colors.accent },
+  saveButtonTextDone: { color: colors.textDim },
   content: { flex: 1 },
   contentPadding: { padding: 20, paddingBottom: 120 },
   outputCard: { padding: 16, marginBottom: 12 },

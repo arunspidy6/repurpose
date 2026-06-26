@@ -1,22 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { colors, PLATFORMS, VOICES, SRC_TYPES } from '../data/constants';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
+import { colors, PLATFORMS, VOICES, SRC_TYPES, UPLOAD_TYPES, SRC_PLACEHOLDERS } from '../data/constants';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { MonoChip } from '../components/MonoChip';
 
 interface Props {
   onExit: () => void;
-  onComplete: (selected: string[], voice: string) => void;
+  onComplete: (args: { selected: string[]; voice: string; srcType: string; sourceText: string }) => void;
 }
 
 export function NewRepurposeScreen({ onExit, onComplete }: Props) {
   const [step, setStep] = useState(0);
-  const [srcType, setSrcType] = useState('longvideo');
-  const [selected, setSelected] = useState(['hooks', 'shorts', 'reel', 'xthread']);
+  const [srcType, setSrcType] = useState('idea');
+  const [sourceText, setSourceText] = useState('');
+  const [uploadedName, setUploadedName] = useState('');
+  const [selected, setSelected] = useState(['tiktok', 'instagram', 'reels', 'x']);
   const [voice, setVoice] = useState('My main voice');
   const [generating, setGenerating] = useState(false);
   const [genProgress, setGenProgress] = useState(0);
+
+  const isUpload = UPLOAD_TYPES.includes(srcType);
+  // Source is "stored" once there's pasted text, or a (simulated) uploaded file.
+  const hasSource = isUpload ? !!uploadedName : sourceText.trim().length > 0;
 
   useEffect(() => {
     if (!generating) return;
@@ -26,7 +32,7 @@ export function NewRepurposeScreen({ onExit, onComplete }: Props) {
         if (p >= selected.length) {
           clearInterval(interval);
           setGenerating(false);
-          setTimeout(() => onComplete(selected, voice), 500);
+          setTimeout(() => onComplete({ selected, voice, srcType, sourceText: sourceText || uploadedName }), 500);
           return p;
         }
         return p + 1;
@@ -34,7 +40,7 @@ export function NewRepurposeScreen({ onExit, onComplete }: Props) {
     }, 620);
 
     return () => clearInterval(interval);
-  }, [generating, selected, voice, onComplete]);
+  }, [generating, selected, voice, srcType, sourceText, uploadedName, onComplete]);
 
   const togglePlatform = (id: string) => {
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -64,34 +70,77 @@ export function NewRepurposeScreen({ onExit, onComplete }: Props) {
 
         <ScrollView style={styles.content} contentContainerStyle={styles.contentPadding}>
           <Text style={styles.heading}>Add your input</Text>
-          <Text style={styles.subheading}>Long video, short clip, transcript, caption, or a rough idea — we'll spin it into every format.</Text>
+          <Text style={styles.subheading}>Video, short clip, transcript, caption, or a rough idea — we'll turn it into platform-native content.</Text>
 
           <View style={styles.srcTabs}>
             {SRC_TYPES.map((t) => (
-              <TouchableOpacity key={t.id} onPress={() => setSrcType(t.id)} style={[styles.srcTab, srcType === t.id ? styles.srcTabActive : styles.srcTabInactive]}>
+              <TouchableOpacity
+                key={t.id}
+                onPress={() => { setSrcType(t.id); setUploadedName(''); }}
+                style={[styles.srcTab, srcType === t.id ? styles.srcTabActive : styles.srcTabInactive]}
+              >
                 <Text style={styles.srcTabLabel}>{t.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <Card style={styles.sourceCard}>
-            <Text style={styles.sourceLabel}>Selected file</Text>
-            <View style={styles.sourceInput}>
-              <Text style={styles.sourceValue}>keynote-talk.mp4</Text>
-              <View style={styles.sourceIndicator} />
-            </View>
-            <View style={styles.sourceConfirm}>
-              <View style={styles.sourceCheckmark}>
-                <Text>✓</Text>
-              </View>
-              <View>
-                <Text style={styles.sourceTitle}>How I grew my newsletter</Text>
-                <Text style={styles.sourceMeta}>Source ready · YouTube · 24:18</Text>
-              </View>
-            </View>
-          </Card>
+          {isUpload ? (
+            <Card style={styles.sourceCard}>
+              <Text style={styles.sourceLabel}>Upload {srcType === 'shortvideo' ? 'short video' : 'video'}</Text>
+              {uploadedName ? (
+                <View style={styles.sourceConfirm}>
+                  <View style={styles.sourceCheckmark}><Text>✓</Text></View>
+                  <View>
+                    <Text style={styles.sourceTitle}>{uploadedName}</Text>
+                    <Text style={styles.sourceMeta}>Source ready · tap Choose platforms</Text>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.uploadZone}
+                  onPress={() => setUploadedName(srcType === 'shortvideo' ? 'short-clip.mp4' : 'my-video.mp4')}
+                >
+                  <Text style={styles.uploadIcon}>⬆️</Text>
+                  <Text style={styles.uploadText}>Tap to select a file</Text>
+                  <Text style={styles.uploadHint}>MP4, MOV up to 500MB</Text>
+                </TouchableOpacity>
+              )}
+              <Text style={styles.orPaste}>…or paste a link / transcript below</Text>
+              <TextInput
+                value={sourceText}
+                onChangeText={setSourceText}
+                placeholder={SRC_PLACEHOLDERS[srcType]}
+                placeholderTextColor={colors.textDim}
+                multiline
+                style={styles.pasteInput}
+              />
+            </Card>
+          ) : (
+            <Card style={styles.sourceCard}>
+              <Text style={styles.sourceLabel}>Paste your {SRC_TYPES.find((t) => t.id === srcType)?.label.toLowerCase()}</Text>
+              <TextInput
+                value={sourceText}
+                onChangeText={setSourceText}
+                placeholder={SRC_PLACEHOLDERS[srcType]}
+                placeholderTextColor={colors.textDim}
+                multiline
+                style={styles.pasteInput}
+              />
+              {sourceText.trim().length > 0 && (
+                <Text style={styles.charCount}>{sourceText.trim().length} characters · source stored</Text>
+              )}
+            </Card>
+          )}
 
-          <Button label="Choose formats" onPress={() => setStep(1)} style={{ marginTop: 12 }} />
+          <Button
+            label="Choose platforms"
+            onPress={() => setStep(1)}
+            disabled={!hasSource}
+            style={{ marginTop: 12 }}
+          />
+          {!hasSource && (
+            <Text style={styles.hintBelow}>Add or paste your source to continue</Text>
+          )}
         </ScrollView>
       </View>
     );
@@ -114,7 +163,7 @@ export function NewRepurposeScreen({ onExit, onComplete }: Props) {
         <ScrollView style={styles.content} contentContainerStyle={styles.contentPadding}>
           <View style={styles.headingRow}>
             <View>
-              <Text style={styles.heading}>Pick formats</Text>
+              <Text style={styles.heading}>Pick platforms</Text>
               <Text style={styles.subheading}>{selected.length} selected</Text>
             </View>
             <TouchableOpacity onPress={toggleSelectAll}>
@@ -230,6 +279,14 @@ const styles = StyleSheet.create({
   srcTabLabel: { fontSize: 14.5, fontWeight: '600', color: colors.text },
   sourceCard: { padding: 16, marginBottom: 20 },
   sourceLabel: { fontSize: 13, color: colors.textDim, fontWeight: '500', marginBottom: 12 },
+  pasteInput: { minHeight: 120, backgroundColor: '#0e0e10', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', borderRadius: 12, padding: 13, fontSize: 14.5, lineHeight: 21, color: colors.text, textAlignVertical: 'top' },
+  charCount: { fontSize: 12, color: colors.accent, marginTop: 8, fontWeight: '500' },
+  uploadZone: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', borderStyle: 'dashed', borderRadius: 12, paddingVertical: 26, alignItems: 'center', gap: 4, marginBottom: 12 },
+  uploadIcon: { fontSize: 24 },
+  uploadText: { fontSize: 14.5, fontWeight: '600', color: colors.text },
+  uploadHint: { fontSize: 12, color: colors.textDim },
+  orPaste: { fontSize: 12.5, color: colors.textDim, marginVertical: 10, textAlign: 'center' },
+  hintBelow: { fontSize: 12.5, color: colors.textDim, textAlign: 'center', marginTop: 10 },
   sourceInput: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0e0e10', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, marginBottom: 12 },
   sourceValue: { flex: 1, fontSize: 15, color: colors.text },
   sourceIndicator: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: colors.accent },

@@ -6,13 +6,17 @@ import { MonoChip } from '../components/MonoChip';
 
 interface Props {
   onSelectProject: (project: any) => void;
+  projects?: any[];
 }
 
-const FILTERS = ['All', 'Hooks', 'Short-form', 'Captions', 'Posts', 'A/B'];
+const FILTERS = ['All', 'TikTok', 'Instagram', 'Reels', 'Shorts', 'X', 'LinkedIn'];
 
-export function LibraryScreen({ onSelectProject }: Props) {
+export function LibraryScreen({ onSelectProject, projects = PROJECTS }: Props) {
   const [filter, setFilter] = useState('All');
   const getPlatform = (id: string) => PLATFORMS.find((p) => p.id === id);
+  const filtered = filter === 'All'
+    ? projects
+    : projects.filter((p) => (p.formats ?? []).some((f: string) => getPlatform(f)?.name === filter));
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -31,7 +35,7 @@ export function LibraryScreen({ onSelectProject }: Props) {
       </ScrollView>
 
       <View style={styles.list}>
-        {PROJECTS.map((project) => (
+        {filtered.map((project) => (
           <TouchableOpacity key={project.id} onPress={() => onSelectProject(project)} activeOpacity={0.7}>
             <Card style={styles.item}>
               <View style={styles.itemContent}>
