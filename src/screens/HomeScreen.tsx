@@ -10,35 +10,37 @@ interface Props {
   onViewLibrary: () => void;
   onSelectProject: (project: any) => void;
   projects?: any[];
+  usedThisMonth?: number;
+  monthlyLimit?: number;
 }
 
-export function HomeScreen({ onNewRepurpose, onViewLibrary, onSelectProject, projects = PROJECTS }: Props) {
+export function HomeScreen({ onNewRepurpose, onViewLibrary, onSelectProject, projects = PROJECTS, usedThisMonth, monthlyLimit }: Props) {
   const recentProjects = projects.slice(0, 4);
   const getPlatform = (id: string) => PLATFORMS.find((p) => p.id === id);
+
+  const used = usedThisMonth ?? 0;
+  const limit = monthlyLimit ?? 10;
+  const pct = limit > 0 ? Math.min(Math.round((used / limit) * 100), 100) : 0;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>Good morning, Maya</Text>
+          <Text style={styles.greeting}>Your content engine</Text>
           <Text style={styles.title}>Repurpose</Text>
-        </View>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>M</Text>
         </View>
       </View>
 
       <Card style={styles.usageCard}>
         <View style={styles.usageHeader}>
           <Text style={styles.usageLabel}>Free plan · this month</Text>
-          <Text style={styles.upgradeLink}>Upgrade</Text>
         </View>
         <View style={styles.usageContent}>
-          <Text style={styles.usageNumber}>3</Text>
-          <Text style={styles.usageText}>of 5 repurposes used</Text>
+          <Text style={styles.usageNumber}>{used}</Text>
+          <Text style={styles.usageText}>of {limit} repurposes used</Text>
         </View>
         <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: '60%' }]} />
+          <View style={[styles.progressFill, { width: `${pct}%` }]} />
         </View>
       </Card>
 

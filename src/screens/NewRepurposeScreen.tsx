@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { colors, PLATFORMS, VOICES, SRC_TYPES, UPLOAD_TYPES, SRC_PLACEHOLDERS } from '../data/constants';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
-import { MonoChip } from '../components/MonoChip';
 
 interface Props {
   onExit: () => void;
@@ -17,30 +16,10 @@ export function NewRepurposeScreen({ onExit, onComplete }: Props) {
   const [uploadedName, setUploadedName] = useState('');
   const [selected, setSelected] = useState(['tiktok', 'instagram', 'reels', 'x']);
   const [voice, setVoice] = useState('My main voice');
-  const [generating, setGenerating] = useState(false);
-  const [genProgress, setGenProgress] = useState(0);
 
   const isUpload = UPLOAD_TYPES.includes(srcType);
   // Source is "stored" once there's pasted text, or a (simulated) uploaded file.
   const hasSource = isUpload ? !!uploadedName : sourceText.trim().length > 0;
-
-  useEffect(() => {
-    if (!generating) return;
-
-    const interval = setInterval(() => {
-      setGenProgress((p) => {
-        if (p >= selected.length) {
-          clearInterval(interval);
-          setGenerating(false);
-          setTimeout(() => onComplete({ selected, voice, srcType, sourceText: sourceText || uploadedName }), 500);
-          return p;
-        }
-        return p + 1;
-      });
-    }, 620);
-
-    return () => clearInterval(interval);
-  }, [generating, selected, voice, srcType, sourceText, uploadedName, onComplete]);
 
   const togglePlatform = (id: string) => {
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -204,51 +183,12 @@ export function NewRepurposeScreen({ onExit, onComplete }: Props) {
             </ScrollView>
           </View>
 
-          <Button label={`Generate ${selected.length} outputs`} onPress={() => { setStep(2); setGenerating(true); setGenProgress(0); }} style={{ marginTop: 20 }} />
-        </ScrollView>
-      </View>
-    );
-  }
-
-  if (step === 2) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onExit} style={styles.closeButton}>
-            <Text style={styles.closeIcon}>✕</Text>
-          </TouchableOpacity>
-          <View style={styles.stepBars}>
-            {[0, 1, 2].map((i) => (
-              <View key={i} style={[styles.stepBar, i <= step ? styles.stepBarActive : styles.stepBarInactive]} />
-            ))}
-          </View>
-        </View>
-
-        <ScrollView style={styles.content} contentContainerStyle={styles.contentPadding}>
-          <View style={styles.generatingContainer}>
-            <ActivityIndicator size="large" color={colors.accent} />
-            <Text style={styles.generatingTitle}>Repurposing…</Text>
-            <Text style={styles.generatingSubtitle}>Adapting your source into {selected.length} platform-native formats</Text>
-          </View>
-
-          <View style={styles.genList}>
-            {selected.map((id, i) => {
-              const p = PLATFORMS.find((x) => x.id === id);
-              const isDone = i < genProgress;
-              const isActive = i === genProgress;
-
-              return (
-                <View key={id} style={[styles.genRow, isDone || isActive ? styles.genRowActive : styles.genRowInactive]}>
-                  <View style={[styles.genMono, isDone || isActive ? styles.genMonoActive : styles.genMonoInactive]}>
-                    <Text style={styles.genMonoText}>{p?.mono}</Text>
-                  </View>
-                  <Text style={[styles.genName, isDone || isActive ? { color: colors.text } : { color: colors.textFaint }]}>{p?.name}</Text>
-                  {isDone && <Text style={styles.genCheck}>✓</Text>}
-                  {isActive && <ActivityIndicator color={colors.accent} />}
-                </View>
-              );
-            })}
-          </View>
+          <Button
+            label={`Generate ${selected.length} outputs`}
+            onPress={() => onComplete({ selected, voice, srcType, sourceText: sourceText || uploadedName })}
+            disabled={selected.length === 0}
+            style={{ marginTop: 20 }}
+          />
         </ScrollView>
       </View>
     );

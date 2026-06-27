@@ -3,12 +3,20 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch } from 're
 import { colors, VOICES } from '../data/constants';
 import { Card } from '../components/Card';
 
-interface Props {}
+interface Props {
+  email?: string;
+  usage?: { used: number; limit: number } | null;
+  authEnabled?: boolean;
+  onSignOut?: () => void;
+}
 
-export function SettingsScreen({ }: Props) {
+export function SettingsScreen({ email, usage, authEnabled = false, onSignOut }: Props) {
   const [darkMode, setDarkMode] = useState(true);
   const [haptic, setHaptic] = useState(true);
-  const [activeVoice, setActiveVoice] = useState('My main voice');
+  const [activeVoice] = useState('My main voice');
+
+  const initial = (email || 'You').trim().charAt(0).toUpperCase();
+  const remaining = usage ? Math.max(usage.limit - usage.used, 0) : null;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -17,25 +25,29 @@ export function SettingsScreen({ }: Props) {
       <Card style={styles.profileCard}>
         <View style={styles.profileContent}>
           <View style={styles.profileAvatar}>
-            <Text style={styles.profileAvatarText}>M</Text>
+            <Text style={styles.profileAvatarText}>{initial}</Text>
           </View>
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>Maya Okonkwo</Text>
-            <Text style={styles.profileEmail}>maya@studio.co · Free plan</Text>
+            <Text style={styles.profileName} numberOfLines={1}>{email || 'Your account'}</Text>
+            <Text style={styles.profileEmail}>
+              {authEnabled ? 'Free plan' : 'Not signed in'}
+              {usage ? ` · ${usage.used}/${usage.limit} this month` : ''}
+            </Text>
           </View>
-          <Text style={styles.profileChevron}>›</Text>
         </View>
       </Card>
 
-      <TouchableOpacity activeOpacity={0.7}>
-        <Card style={styles.upgradeCard}>
-          <View style={styles.upgradeHeader}>
-            <Text style={styles.upgradeTitle}>Repurpose Pro</Text>
-            <Text style={styles.upgradePrice}>$12/mo</Text>
-          </View>
-          <Text style={styles.upgradeDesc}>Unlimited repurposes, brand voice memory, library search, and advanced export.</Text>
-        </Card>
-      </TouchableOpacity>
+      <Card style={styles.upgradeCard}>
+        <View style={styles.upgradeHeader}>
+          <Text style={styles.upgradeTitle}>Repurpose Pro</Text>
+          <Text style={styles.upgradePrice}>Coming soon</Text>
+        </View>
+        <Text style={styles.upgradeDesc}>
+          {remaining !== null
+            ? `${remaining} free repurpose${remaining === 1 ? '' : 's'} left this month. Unlimited generation arrives with Pro.`
+            : 'Unlimited repurposes, brand voice memory, and advanced export — arriving with Pro.'}
+        </Text>
+      </Card>
 
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>Brand voices</Text>
@@ -71,10 +83,16 @@ export function SettingsScreen({ }: Props) {
           </View>
           <View style={styles.prefRow}>
             <Text style={styles.prefLabel}>Default export</Text>
-            <Text style={styles.prefValue}>Share sheet ›</Text>
+            <Text style={styles.prefValue}>Copy ›</Text>
           </View>
         </Card>
       </View>
+
+      {authEnabled && onSignOut && (
+        <TouchableOpacity onPress={onSignOut} style={styles.signOut} activeOpacity={0.7}>
+          <Text style={styles.signOutText}>Sign out</Text>
+        </TouchableOpacity>
+      )}
     </ScrollView>
   );
 }
@@ -114,4 +132,6 @@ const styles = StyleSheet.create({
   prefRowBorder: { borderBottomWidth: 0.5, borderBottomColor: colors.border },
   prefLabel: { fontSize: 15.5, color: colors.text },
   prefValue: { fontSize: 14.5, color: colors.textDim },
+  signOut: { marginTop: 4, marginBottom: 20, alignSelf: 'center', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,107,107,0.3)' },
+  signOutText: { fontSize: 14.5, fontWeight: '600', color: '#ff6b6b' },
 });

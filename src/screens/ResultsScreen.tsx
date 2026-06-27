@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { colors, PLATFORMS, OUTPUTS } from '../data/constants';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -8,26 +9,37 @@ interface Props {
   title: string;
   voice: string;
   selected: string[];
+  outputs: Record<string, string>;
   saved?: boolean;
-  onSave?: () => void;
+  autoSaved?: boolean;
+  onSaveOutputs?: (outputs: Record<string, string>) => void;
   onExit: () => void;
 }
 
-export function ResultsScreen({ title, voice, selected, saved = false, onSave, onExit }: Props) {
+export function ResultsScreen({ title, voice, selected, outputs, saved = false, autoSaved = false, onSaveOutputs, onExit }: Props) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [toast, setToast] = useState('');
+  const [outputsLocal, setOutputsLocal] = useState<Record<string, string>>(outputs);
+  const [dirty, setDirty] = useState(false);
 
   const getPlatform = (id: string) => PLATFORMS.find((p) => p.id === id);
+  // Real generated output; fall back to a sample only for mock/demo projects.
+  const textFor = (id: string) => outputsLocal[id] || OUTPUTS[id] || '';
 
   const openEditor = (id: string) => {
     setEditingId(id);
-    setEditText(OUTPUTS[id] || '');
+    setEditText(textFor(id));
     setEditorOpen(true);
   };
 
   const closeEditor = () => {
+    // Commit any edit back into the local outputs.
+    if (editingId && editText !== textFor(editingId)) {
+      setOutputsLocal((o) => ({ ...o, [editingId]: editText }));
+      setDirty(true);
+    }
     setEditorOpen(false);
     setEditingId(null);
     setEditText('');
@@ -36,6 +48,26 @@ export function ResultsScreen({ title, voice, selected, saved = false, onSave, o
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(''), 1700);
+  };
+
+  const handleSave = () => {
+    if (!dirty && (saved || autoSaved)) { showToast('Already saved'); return; }
+    onSaveOutputs?.(outputsLocal);
+    setDirty(false);
+    showToast(autoSaved ? 'Changes saved' : 'Saved to library');
+  };
+
+  const copy = async (text: string) => {
+    try { await Clipboard.setStringAsync(text); showToast('Copied to clipboard'); }
+    catch { showToast('Copy failed'); }
+  };
+
+  const exportAll = async () => {
+    const body = selected
+      .map((id) => `## ${getPlatform(id)?.name ?? id}\n\n${textFor(id)}`)
+      .join('\n\n———\n\n');
+    await copy(body);
+    showToast(`Copied ${selected.length} outputs`);
   };
 
   return (
@@ -53,21 +85,19 @@ export function ResultsScreen({ title, voice, selected, saved = false, onSave, o
           </Text>
         </View>
         <TouchableOpacity
-          onPress={() => {
-            if (saved) { showToast('Already in your library'); return; }
-            onSave?.();
-            showToast('Saved to library');
-          }}
-          style={[styles.saveButton, saved && styles.saveButtonDone]}
+          onPress={handleSave}
+          style={[styles.saveButton, (saved || autoSaved) && !dirty && styles.saveButtonDone]}
         >
-          <Text style={[styles.saveButtonText, saved && styles.saveButtonTextDone]}>{saved ? '✓ Saved' : 'Save'}</Text>
+          <Text style={[styles.saveButtonText, (saved || autoSaved) && !dirty && styles.saveButtonTextDone]}>
+            {(saved || autoSaved) && !dirty ? '✓ Saved' : 'Save'}
+          </Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentPadding}>
         {selected.map((id) => {
           const p = getPlatform(id);
-          const preview = OUTPUTS[id] || '';
+          const preview = textFor(id);
 
           return (
             <TouchableOpacity key={id} onPress={() => openEditor(id)} activeOpacity={0.7}>
@@ -80,7 +110,7 @@ export function ResultsScreen({ title, voice, selected, saved = false, onSave, o
                     <Text style={styles.outputName}>{p?.name}</Text>
                     <Text style={styles.outputSub}>{p?.sub}</Text>
                   </View>
-                  <TouchableOpacity onPress={() => { showToast('Copied to clipboard'); }} style={styles.copyButton}>
+                  <TouchableOpacity onPress={() => copy(textFor(id))} style={styles.copyButton}>
                     <Text style={styles.copyIcon}>📋</Text>
                   </TouchableOpacity>
                 </View>
@@ -98,8 +128,8 @@ export function ResultsScreen({ title, voice, selected, saved = false, onSave, o
       </ScrollView>
 
       <View style={styles.footer}>
-        <Button label="Send to scheduler" variant="secondary" size="md" onPress={() => showToast('Sent to your scheduler')} style={{ flex: 1 }} />
-        <Button label="Export all" onPress={() => showToast(`Exported ${selected.length} outputs`)} style={{ flex: 1, marginLeft: 10 }} />
+        <Button label="Copy all" variant="secondary" size="md" onPress={exportAll} style={{ flex: 1 }} />
+        <Button label="Export all" onPress={exportAll} style={{ flex: 1, marginLeft: 10 }} />
       </View>
 
       {toast && (
@@ -134,8 +164,8 @@ export function ResultsScreen({ title, voice, selected, saved = false, onSave, o
               <TouchableOpacity onPress={() => showToast('Generating a new variation…')} style={styles.editorRegenerateButton}>
                 <Text style={styles.editorRegenerateIcon}>🔄</Text>
               </TouchableOpacity>
-              <Button label="Share" variant="secondary" size="md" onPress={() => showToast('Opening share sheet…')} style={{ flex: 1, marginHorizontal: 8 }} />
-              <Button label="Copy" onPress={() => { showToast('Copied to clipboard'); }} style={{ flex: 1.4 }} />
+              <Button label="Done" variant="secondary" size="md" onPress={closeEditor} style={{ flex: 1, marginHorizontal: 8 }} />
+              <Button label="Copy" onPress={() => copy(editText)} style={{ flex: 1.4 }} />
             </View>
           </View>
         </View>
